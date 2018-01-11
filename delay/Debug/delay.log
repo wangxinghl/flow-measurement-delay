@@ -1,0 +1,12 @@
+﻿生成启动时间为 2018/1/11 20:28:51。
+     1>项目“D:\code\delay\delay\delay.vcxproj”在节点 2 上(Build 个目标)。
+     1>Link:
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"D:\code\delay\Debug\delay.exe" /INCREMENTAL /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:\code\delay\Debug\delay.pdb" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"D:\code\delay\Debug\delay.lib" /MACHINE:X86 Debug\main.obj
+         "Debug\max-flow.obj"
+         Debug\topology.obj
+         delay.vcxproj -> D:\code\delay\Debug\delay.exe
+     1>已完成生成项目“D:\code\delay\delay\delay.vcxproj”(Build 个目标)的操作。
+
+生成成功。
+
+已用时间 00:00:00.32
