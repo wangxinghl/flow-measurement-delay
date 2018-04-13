@@ -14,14 +14,14 @@
 
 using namespace std;
 
-const int DEPTH = 2;
-const int MAX = 9;
+const int DEPTH = 3;
+const int MAX = 16;
 bool cplex = true;
 
 int main(int argc, const char *argv[])
 {
 	Topology topo;
-	if (topo.Create(NORMAL_3) == 0) {
+	if (topo.Create(FATTREE_3) == 0) {	// FATTREE_3, NORMAL_3
 		system("PAUSE");
 		return 0;
 	}

@@ -12,25 +12,18 @@
 
 MaxFlow::MaxFlow()
 {
+	m_topo = NULL;
 	m_nodeNum = 0;
 	m_edgeNum = 0;
 	m_totalNum = 0;
 	m_src = INT_MAX;
 	m_dst = INT_MAX;
-	m_topo = NULL;
 }
 
 MaxFlow::~MaxFlow()
 {
-	FlowEdge *cur, *next;
-	for (int i = 0; i < m_totalNum; i++) {
-		cur = m_nodes[i].first;
-		while (cur) {
-			next = cur->next;
-			delete cur;
-			cur = next;
-		}
-	}
+	m_nodes.clear();
+	m_edges.clear();
 }
 
 void MaxFlow::Calculate(Topology *topo, int depth, int max)
@@ -38,31 +31,33 @@ void MaxFlow::Calculate(Topology *topo, int depth, int max)
 	Initialize(topo, depth, max);
 
 	while (1) {
-		ResetNodeFlag();
+		ResetFlag();
 		AddTag();
-		if (AdjustFlow() == 1) break;			// 已无法找到增广链
+		if (Adjust() == 1) break;			// 已无法找到增广链
 	}
+	//ShowSolution();
 
 	while (1) {
-		vector<int> choose = GetChooseNode();	// 返回流量从小到大的非零节点编号
+		vector<int> choose = GetChoosedNode();	// 返回流量从小到大的非零节点编号
 		auto it = choose.begin();
 		for (; it != choose.end(); it++) {
 			m_nodes[*it].choose = false;
 			ReleaseFlow(*it);
 			while (1) {
-				ResetNodeFlag();
+				ResetFlag();
 				AddTag();
-				if (AdjustFlow() == 1) break;			// 已无法找到增广链
+				if (Adjust() == 1) break;			// 已无法找到增广链
 			}
 			if (IsCoverAll()) break;
 			
 			m_nodes[*it].choose = true;
 			while (1) {
-				ResetNodeFlag();
+				ResetFlag();
 				AddTag();
-				if (AdjustFlow() == 1) break;			// 已无法找到增广链
+				if (Adjust() == 1) break;			// 已无法找到增广链
 			}
 		}
+		//ShowSolution();
 		if (it == choose.end()) break;
 	}
 
@@ -78,211 +73,232 @@ void MaxFlow::Initialize(Topology *topo, int depth, int max)
 	m_src = m_totalNum - 2;
 	m_dst = m_totalNum - 1;
 
-	vector<map<int, int> > edge2node;		// Edge to node
-	for (int i = 0; i < m_edgeNum; i++)
-		edge2node.push_back(topo->GetEdgeAdjacentNode(i, depth));
-
-	/*
-	* Create Flow Topology
-	*/
-	m_nodes.resize(m_totalNum);		// Initialize the nodes
-
-	FlowEdge **cur, *next;
-	cur = &m_nodes[m_src].first;		// From source node to the first layer
+	vector<map<int, int> > edge2node;		// Edge to node, vector<edgeId>, map<nodeId, distance>
 	for (int i = 0; i < m_edgeNum; i++) {
-		next = new FlowEdge;
-		next->dst = i;
-		
-		*cur = next;
-		cur = &next->next;
+		edge2node.push_back(topo->GetEdgeAdjacentNode(i, depth));
 	}
 
+	/* Create Flow Topology */
+	m_nodes.resize(m_totalNum);
+
+	m_nodes[m_src].adjEdge = 0;		// From source node to the first layer
+	for (int i = 0; i < m_edgeNum; i++) {
+		m_adj[m_src][i] = m_edges.size();
+		FlowEdge edge;
+		edge.src = m_src;
+		edge.dst = i;
+		edge.next = m_edges.size() + 1;
+		m_edges.push_back(edge);
+	}
+	m_edges.back().next = INT_MAX;
+
 	for (int i = 0; i < m_edgeNum; i++) {	// From the first layer to the second layer
-		cur = &m_nodes[i].first;
+		m_nodes[i].adjEdge = m_edges.size();
 		map<int, int> &temp = edge2node[i];
 		for (map<int, int>::iterator it = temp.begin(); it != temp.end(); it++) {
-			next = new FlowEdge;
-			next->dst = m_edgeNum + it->first;
-			next->cost = it->second;
-
-			*cur = next;
-			cur = &next->next;
+			m_adj[i][m_edgeNum + it->first] = m_edges.size();
+			FlowEdge edge;
+			edge.src = i;
+			edge.dst = m_edgeNum + it->first;
+			edge.cost = it->second;
+			edge.next = m_edges.size() + 1;
+			m_edges.push_back(edge);
 		}
+		m_edges.back().next = INT_MAX;
 	}
 
 	for (int i = m_edgeNum; i < m_src; i++) {	// From the second layer to destination node
-		next = new FlowEdge;
-		next->dst = m_dst;
-		// next->cost = IN_MAX;		// need to rewrite
-		next->cap = max;
-		m_nodes[i].first = next;
+		m_nodes[i].adjEdge = m_edges.size();
+		m_adj[i][m_dst] = m_edges.size();
+		FlowEdge edge;
+		edge.src = i;
+		edge.dst = m_dst;
+		//edge.cost = INT_MAX;	// need to rewrite
+		edge.cap = max;
+		m_edges.push_back(edge);
 	}
 }
 
 void MaxFlow::AddTag(void)
 {
-	m_nodes[m_src].flag = m_src;
-	m_nodes[m_src].left = INT_MAX;
+	//m_nodes[m_src].flag = m_src;	// initialize
+	//m_nodes[m_src].left = INT_MAX;
 
-	set<int> cur, next;
-	cur.insert(m_src);
-	while (!cur.empty()) {
-		for (auto it = cur.begin(); it != cur.end(); it++) {
-			map<int, vector<int> > temp;
-			FlowEdge *p = m_nodes[*it].first;
-			while (p) {		
-				if (p->flow < p->cap && m_nodes[p->dst].choose)
-					temp[p->cost].push_back(p->dst);
-				p = p->next; 
-			}
-			if (temp.empty()) continue;
-
-			int min_cost = INT_MAX;
-			for (auto iter = temp.begin(); iter != temp.end(); iter++) {
-				if (iter->first < min_cost)
-					min_cost = iter->first;
-			}
-
-			for (auto iter = temp[min_cost].begin(); iter != temp[min_cost].end(); iter++) {
-				if (m_nodes[*iter].flag == INT_MAX) {
-					m_nodes[*iter].flag = *it;
-					m_nodes[*iter].left = 1;
-					m_nodes[*iter].cost = min_cost;
-					next.insert(*iter);
-				}
-				else {
-					if (min_cost < m_nodes[*iter].cost) {
-						m_nodes[*iter].flag = *it;
-						m_nodes[*iter].cost = min_cost;
+	int adjEdge;
+	FlowEdge *p, *q;
+	
+	/* from source node to the first layer */
+	adjEdge = m_nodes[m_src].adjEdge;
+	while (adjEdge != INT_MAX) {
+		p = &m_edges[adjEdge];
+		if (p->flow < p->cap) {
+			m_nodes[p->dst].flag = m_src;
+			m_nodes[p->dst].left = 1;
+		}
+		adjEdge = p->next;
+	}
+	
+	/* from the first layer to the second layer */
+	for (int i = 0; i < m_edgeNum; i++) {
+		if (m_nodes[i].flag != INT_MAX) {	// link have flag
+			adjEdge = m_nodes[i].adjEdge;
+			while (adjEdge != INT_MAX) {
+				p = &m_edges[adjEdge];		// the first layer ---> the second layer
+				q = &m_edges[m_nodes[p->dst].adjEdge];	// the second layer ---> destination
+				if (p->flow < p->cap && m_nodes[p->dst].choose && q->flow < q->cap) {	// 有可用容量，目的节点可行备选节点
+					if (m_nodes[p->dst].flag == INT_MAX) {  // have no flag, give flag
+						m_nodes[p->dst].flag = i;
+						m_nodes[p->dst].left = 1;
+						m_nodes[p->dst].cost = p->cost;
+					}
+					else if (p->cost < m_nodes[p->dst].cost) {	// have flag, modify flag. minimize distance
+						m_nodes[p->dst].flag = i;
+						m_nodes[p->dst].cost = p->cost;
 					}
 				}
+				adjEdge = p->next;
 			}
 		}
-		cur = next;
-		next.clear();
+	}
+
+	/* from the second layer to destination node */
+	int min_cost = INT_MAX;
+	for (int i = m_edgeNum; i < m_src; i++) {
+		if (m_nodes[i].flag != INT_MAX && m_nodes[i].cost < INT_MAX)
+			min_cost = m_nodes[i].cost;
+	}
+	if (min_cost == INT_MAX) return;
+	for (int i = m_edgeNum; i < m_src; i++) {
+		if (m_nodes[i].flag != INT_MAX && m_nodes[i].cost == min_cost) {
+			p = &m_edges[m_nodes[i].adjEdge];
+			if (m_nodes[m_dst].flag == INT_MAX) {  // have no flag, give flag
+				m_nodes[m_dst].flag = i;
+				m_nodes[m_dst].left = 1;
+				m_nodes[m_dst].cost = p->flow;
+			}
+			else if (p->flow > m_nodes[m_dst].cost) {	// have flag, modify flag. minimize distance
+				m_nodes[m_dst].flag = i;
+				m_nodes[m_dst].cost = p->flow;
+			}
+		}
 	}
 }
 
-int MaxFlow::AdjustFlow(void)
+int MaxFlow::Adjust(void)
 {
-	/* 调整过程 */
-	if (m_nodes[m_dst].flag == INT_MAX)
-		return 1;		// 已找不到增广链, return 1
+	if (m_nodes[m_dst].flag == INT_MAX) return 1;	// 已找不到增广链, return 1
 
 	int cur = m_dst;
-	int pre = m_nodes[cur].flag;
 	while (cur != m_src) {
-		FlowEdge *p = m_nodes[pre].first;
-		while (p && p->dst != cur)	
-			p = p->next;
-		p->flow += m_nodes[cur].left;
-
-		cur = pre;
-		pre = m_nodes[pre].flag;
+		m_edges[m_adj[m_nodes[cur].flag][cur]].flow++;
+		cur = m_nodes[cur].flag;
 	}
 	return 0;	// 已对增广链上的流量进行调整, return 0
 }
 
-void MaxFlow::ResetNodeFlag(void)
+void MaxFlow::ResetFlag(void)
 {
-	for (int i = 0; i < m_totalNum; i++)
+	for (int i = 0; i < m_totalNum; i++) {
 		m_nodes[i].flag = INT_MAX;
+	}
 }
 
 void MaxFlow::ReleaseFlow(int node)
 {
-	m_nodes[node].first->flow = 0;
+	/* from the second layer to destination node */
+	m_edges[m_nodes[node].adjEdge].flow = 0;
 
-	// 查找与该node节点匹配的所有边节点，并撤销其流量
 	set<int> temp;
+	/* from the first layer to the second layer */
+	int adjEdge;
+	FlowEdge *p;
 	for (int i = 0; i < m_edgeNum; i++) {
-		FlowEdge *p = m_nodes[i].first;
-		while (p) {
+		adjEdge = m_nodes[i].adjEdge;
+		while (adjEdge != INT_MAX) {
+			p = &m_edges[adjEdge];
 			if (p->dst == node && p->flow == 1) {
 				p->flow = 0;
 				temp.insert(i);
 				break;
 			}
-			p = p->next;
+			adjEdge = p->next;
 		}
 	}
 	
-	// 撤销Src节点到对应边节点的流量
-	FlowEdge *p = m_nodes[m_src].first;
-	while (p) {
-		if (temp.find(p->dst) != temp.end())
+	/* from source node to the first layer */
+	adjEdge = m_nodes[m_src].adjEdge;
+	while (adjEdge != INT_MAX) {
+		p = &m_edges[adjEdge];
+		if (temp.find(p->dst) != temp.end()) {
 			p->flow = 0;
-		p = p->next;
+		}
+		adjEdge = p->next;
 	}
 }
 
-vector<int> MaxFlow::GetLeftEdge(void)
-{
-	vector<int> left;
-	for (int i = 0; i < m_edgeNum; i++) {
-		FlowEdge *p = m_nodes[i].first;
-		while (p && p->flow == 0)
-			p = p->next;
-
-		if (!p)
-			left.push_back(i);
-	}
-	return left;
-}
-
-vector<int> MaxFlow::GetChooseNode(void)
+vector<int> MaxFlow::GetChoosedNode(void)
 {
 	vector<int> choose;
 	for (int i = m_edgeNum; i < m_src; i++) {
-		if (m_nodes[i].first->flow != 0)
+		if (m_edges[m_nodes[i].adjEdge].flow != 0) {
 			choose.push_back(i);
+		}
 	}
-	sort(choose.begin(), choose.end(), [&](int a, int b){ return m_nodes[a].first->flow < m_nodes[b].first->flow; });
+	sort(choose.begin(), choose.end(), [&](int a, int b){ return m_edges[m_nodes[a].adjEdge].flow < m_edges[m_nodes[b].adjEdge].flow; });
 	return choose;
 }
 
 bool MaxFlow::IsCoverAll(void)
 {
-	FlowEdge *p = m_nodes[m_src].first;
-	while (p && p->flow == 1)
-		p = p->next;
-
-	if (p)
-		return false;
-	else
-		return true;
+	int adjEdge = m_nodes[m_src].adjEdge;
+	while (adjEdge != INT_MAX){
+		if (m_edges[adjEdge].flow == 0) {
+			return false;
+		}
+		adjEdge = m_edges[adjEdge].next;
+	}
+	return true;
 }
 
 void MaxFlow::ShowNode(void)
 {
-	for (size_t i = 0; i < m_nodes.size(); i++)
-		cout << i << " (" << m_nodes[i].flag << "," << m_nodes[i].left << ")\n";
+	for (size_t i = 0; i < m_nodes.size(); i++) {
+		cout << "node " << i << " (" << m_nodes[i].flag << "," << m_nodes[i].left << ")\n";
+	}
 }
 
 void MaxFlow::ShowEdge(void)
 {
-	for (size_t i = 0; i < m_nodes.size(); i++) {
-		FlowEdge *p = m_nodes[i].first;
-		while (p) {
-			if (p->flow != 0)
-				cout << i << "-->" << p->dst << "(" << p->flow << ")\n";
-			p = p->next;
+	int adjEdge;
+	FlowEdge *p;
+	for (size_t i = 0; i < m_nodeNum; i++) {
+		adjEdge = m_nodes[i].adjEdge;
+		while (adjEdge != INT_MAX) {
+			p = &m_edges[adjEdge];
+			if (p->flow != 0) {
+				cout << "node " << i << "-->" << p->dst << "(" << p->flow << ")\n";
+			}
+			adjEdge = p->next;
 		}
 	}
 }
 
 void MaxFlow::ShowSolution(ostream &out)
 {
-	//out << "Show solution!\n";
-	map<int, map<int, pair<int, int> > > result;
-
+	int adjEdge;
+	FlowEdge *p;
+	map<int, map<int, pair<int, int> > > result;	// map<node_id, map<link_id, link>>
 	for (int i = 0; i < m_edgeNum; i++) {	// Get result
-		FlowEdge *p = m_nodes[i].first;
-		while (p && p->flow == 0)
-			p = p->next;
-		if (p)
-			result[p->dst - m_edgeNum][i] = m_topo->GetEdge(i);
-		else {
+		adjEdge = m_nodes[i].adjEdge;
+		while (adjEdge != INT_MAX) {
+			p = &m_edges[adjEdge];
+			if (p->flow != 0) {
+				result[p->dst - m_edgeNum][i] = m_topo->GetEdge(i);
+				break;
+			}
+			adjEdge = p->next;
+		}
+		if (adjEdge == INT_MAX) {
 			pair<int, int> edge = m_topo->GetEdge(i);
 			out << "Edge <" << edge.first << "," << edge.second << "> can't found the node!\n";
 		}
@@ -305,13 +321,15 @@ void MaxFlow::OutputFile(int max)
 	fout << "edgeM=" << m_edgeNum << ";\n";
 	fout << "K=" << max << ";\n";
 	fout << "delta=[\n";
+
 	for (int i = 0; i < m_edgeNum; i++) {
 		fout << "[";
-		FlowEdge *p = m_nodes[i].first;
+		int adjEdge = m_nodes[i].adjEdge;
+		//FlowEdge *p = m_nodes[i].first;
 		for (int j = 0; j < m_nodeNum; j++) {
-			if (p && p->dst - m_edgeNum == j) {
+			if (adjEdge != INT_MAX && m_edges[adjEdge].dst - m_edgeNum == j) {
 				fout << 1 << ",";
-				p = p->next;
+				adjEdge = m_edges[adjEdge].next;
 			}
 			else {
 				fout << 0 << ",";

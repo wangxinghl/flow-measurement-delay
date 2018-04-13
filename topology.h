@@ -13,7 +13,8 @@ using namespace std;
 
 enum TopoType {
 	NORMAL_2,
-	NORMAL_3
+	NORMAL_3,
+	FATTREE_3
 };
 
 /* The definition of Topology */
@@ -43,6 +44,7 @@ public:
 private:
 	void GetNormal2LyerFile(ofstream &fout);
 	void GetNormal3LyerFile(ofstream &fout);
+	void GetFatTree3LyerFile(ofstream &fout);
 
 	/* The definition of edge */
 	struct Edge {

@@ -34,6 +34,7 @@ int Topology::Create(TopoType type)
 			break;
 		case NORMAL_3: GetNormal3LyerFile(fout);
 			break;
+		case FATTREE_3:	GetFatTree3LyerFile(fout);
 		default:
 			break;
 	}
@@ -229,6 +230,39 @@ void Topology::GetNormal3LyerFile(ofstream &fout)
 	int linkNum = 0;
 	for (int i = 0; i < numSwitchPOD * numPOD; ++i) {	// Links between POD switch and core switch
 		for (int j = i % numSwitchPOD % 2; j < numCoreSw; j += 2) {
+			fout << linkNum << " " << numSwitchPOD * numPOD + i << " " << numSwPOD * numPOD + j << endl;
+			++linkNum;
+		}
+	}
+
+	for (int i = 0; i < numPOD; ++i) {		// Links between switch and switch in POD
+		for (int j = 0; j < numSwitchPOD; ++j) {
+			for (int k = 0; k < numSwitchPOD; ++k) {
+				fout << linkNum << " " << numSwitchPOD * i + j << " " << numSwitchPOD * numPOD + numSwitchPOD * i + k << endl;
+				++linkNum;
+			}
+		}
+	}
+}
+
+void Topology::GetFatTree3LyerFile(ofstream &fout)
+{
+	cout << "Input K: ";
+	int k;
+	cin >> k;
+
+	int numCoreSw, numPOD, numSwPOD, numSwitchPOD;
+	numCoreSw = pow(k / 2, 2);
+	numPOD = k;
+	numSwPOD = k;
+	numSwitchPOD = numSwPOD / 2;   // Calculate the number of switch at each layer in POD
+
+	// Outout to topology file
+	fout << "switch_number: " << numCoreSw + numPOD * numSwPOD << endl;
+
+	int linkNum = 0;
+	for (int i = 0; i < numSwitchPOD * numPOD; ++i) {	// Links between POD switch and core switch
+		for (int j = i % numSwitchPOD % k; j < numCoreSw; j += (k / 2)) {
 			fout << linkNum << " " << numSwitchPOD * numPOD + i << " " << numSwPOD * numPOD + j << endl;
 			++linkNum;
 		}
