@@ -11,12 +11,6 @@
 
 using namespace std;
 
-enum TopoType {
-	NORMAL_2,
-	NORMAL_3,
-	FATTREE_3
-};
-
 /* The definition of Topology */
 class Topology
 {
@@ -24,27 +18,21 @@ public:
 	Topology();
 	~Topology();
 
-	/*
-	 * type = 1, normal 2-layer
-	 * type = 2, normal 3-layer
-	 */
-	int Create(TopoType type);
+	int CreateFatTree(int k);
+	int CreateClos2(int topSwNum, int bottomSwNum);
+	int CreateClos3(int coreSwNum, int podNum, int podSwNum);
+
 	void Show(void);
 
 	int GetNodeNum(void);
 	int GetEdgeNum(void);
 	pair<int, int> GetEdge(int edge);
-
-	int Dist(int node, int edge);
-	vector<int> GetPath(int src, int dst);
 	
 	map<int, int> GetNodeAdjacentEdge(int node, int depth = 1);	// ´ý¼ìÑé
 	map<int, int> GetEdgeAdjacentNode(int edge, int depth = 1);
 
 private:
-	void GetNormal2LyerFile(ofstream &fout);
-	void GetNormal3LyerFile(ofstream &fout);
-	void GetFatTree3LyerFile(ofstream &fout);
+	int Init(void);
 
 	/* The definition of edge */
 	struct Edge {
@@ -54,8 +42,7 @@ private:
 	};
 
 	/* The definition of adjacent edge */
-	struct AdjacentEdge
-	{
+	struct AdjacentEdge {
 		int index;
 		int dst;
 		AdjacentEdge *next;
@@ -67,6 +54,7 @@ private:
 		AdjacentEdge *firstEdge;
 	};
 
+	string m_fileName;
 	vector<Node> m_nodes;
 	vector<Edge> m_edges;
 };

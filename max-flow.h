@@ -27,10 +27,13 @@ public:
 private:
 	/* 初始化变量，并构造边到节点的二部图 */
 	void Initialize(Topology *topo, int depth, int max);
+
+
+	void MaxFlowCalculate(void);
 	/* Ford-Fulkerson 解法标号过程，寻找增广路径 */
-	/* return 0 表示已找到增广路径, retrun 1 表示无法找到增广路径 */
 	void AddTag(void);
-	int Adjust(void);
+	/* return 0 表示已找到增广路径, retrun 1 表示无法找到增广路径 */
+	void Adjust(void);
 	void ResetFlag(void);
 
 	void ReleaseFlow(int node);
@@ -50,13 +53,12 @@ private:
 	};
 
 	struct FlowNode {
-		bool choose;	// 是否选用
 		int flag;		// 标号，指示增广链路的前一个节点
 		int left;		// 剩余流量， 指示增广链路中可增加的流量
 		int cost;		// 代价，指示增广链路的前一个节点到该节点的代价
 		int adjEdge;	// 第一条临接边
 
-		FlowNode() { choose = true; flag = INT_MAX; left = 0; cost = INT_MAX; adjEdge = INT_MAX; }
+		FlowNode() { flag = INT_MAX; left = 0; cost = INT_MAX; adjEdge = INT_MAX; }
 	};
 
 	Topology *m_topo;

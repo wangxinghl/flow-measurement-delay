@@ -11,6 +11,7 @@
 
 Topology::Topology()
 {
+	m_fileName = "../topo-file.txt";
 }
 
 Topology::~Topology()
@@ -23,73 +24,80 @@ Topology::~Topology()
 			p = q;
 		}
 	}
+	m_nodes.clear();
+	m_edges.clear();
 }
 
-int Topology::Create(TopoType type)
+int Topology::CreateFatTree(int k)
 {
-	string str = "../topo-file.txt";
-	ofstream fout(str);
-	switch (type) {
-		case NORMAL_2: GetNormal2LyerFile(fout);
-			break;
-		case NORMAL_3: GetNormal3LyerFile(fout);
-			break;
-		case FATTREE_3:	GetFatTree3LyerFile(fout);
-		default:
-			break;
-	}
-	fout.close();
+	int numCoreSw, numPOD, numSwPOD, numSwitchPOD;
+	numCoreSw = pow(k / 2, 2);
+	numPOD = k;
+	numSwPOD = k;
+	numSwitchPOD = numSwPOD / 2;   // Calculate the number of switch at each layer in POD
 
-	// Read topology file
-	ifstream fin(str);
-	if (fin.bad()) {
-		cout << "Open topology file failed!\n";
-		return 0;
+	ofstream fout(m_fileName);
+	// switch number
+	fout << numCoreSw + numPOD * numSwPOD << endl;
+	// all the links
+	int linkNum = 0;
+	for (int i = 0; i < numSwitchPOD * numPOD; ++i) {	// Links between POD switch and core switch
+		for (int j = i % numSwitchPOD % k; j < numCoreSw; j += (k / 2)) {
+			fout << linkNum << " " << numSwitchPOD * numPOD + i << " " << numSwPOD * numPOD + j << endl;
+			++linkNum;
+		}
 	}
-	
-	// Initialize all the node
-	int numSw;
-	fin >> str >> numSw;
-	m_nodes.resize(numSw);
-	for (int i = 0; i < numSw; i++) {
-		m_nodes[i].index = i;
-		m_nodes[i].firstEdge = NULL;
+	for (int i = 0; i < numPOD; ++i) {		// Links between switch and switch in POD
+		for (int j = 0; j < numSwitchPOD; ++j) {
+			for (int k = 0; k < numSwitchPOD; ++k) {
+				fout << linkNum << " " << numSwitchPOD * i + j << " " << numSwitchPOD * numPOD + numSwitchPOD * i + k << endl;
+				++linkNum;
+			}
+		}
 	}
+	return Init();
+}
 
-	AdjacentEdge *p, *q;
-	Edge edge;
-	while (fin >> edge.index >> edge.src >> edge.dst) {
-		m_edges.push_back(edge);
-		// for src
-		q = new AdjacentEdge;
-		q->index = edge.index;
-		q->dst = edge.dst;
-		q->next = NULL;
-		p = m_nodes[edge.src].firstEdge;
-		if (p) {
-			while (p->next)	p = p->next;	// find the last edge
-			p->next = q;
-		}
-		else {
-			m_nodes[edge.src].firstEdge = q;
-		}
-
-		// for dst
-		q = new AdjacentEdge;
-		q->index = edge.index;
-		q->dst = edge.src;
-		q->next = NULL;
-		p = m_nodes[edge.dst].firstEdge;
-		if (p) {
-			while (p->next)	p = p->next;	// find the last edge
-			p->next = q;
-		}
-		else {
-			m_nodes[edge.dst].firstEdge = q;
+int Topology::CreateClos2(int topSwNum, int bottomSwNum)
+{
+	ofstream fout(m_fileName);
+	// switch number
+	fout << topSwNum + bottomSwNum << endl;
+	// all the links
+	int linkNum = 0;
+	for (int i = 0; i < bottomSwNum; ++i) {
+		for (int j = 0; j < topSwNum; ++j) {
+			fout << linkNum << " " << i << " " << bottomSwNum + j << endl;
+			++linkNum;
 		}
 	}
-	fin.close();
-	return numSw;
+	return Init();
+}
+
+int Topology::CreateClos3(int coreSwNum, int podNum, int podSwNum)
+{
+	int numSwitchPOD = podSwNum / 2;   // Calculate the number of switch at each layer in POD
+
+	ofstream fout(m_fileName);
+	// switch number
+	fout << coreSwNum + podNum * podSwNum << endl;
+	// all the links
+	int linkNum = 0;
+	for (int i = 0; i < numSwitchPOD * podNum; ++i) {	// Links between POD switch and core switch
+		for (int j = i % numSwitchPOD % 2; j < coreSwNum; j += 2) {
+			fout << linkNum << " " << numSwitchPOD * podNum + i << " " << podSwNum * podNum + j << endl;
+			++linkNum;
+		}
+	}
+	for (int i = 0; i < podNum; ++i) {		// Links between switch and switch in POD
+		for (int j = 0; j < numSwitchPOD; ++j) {
+			for (int k = 0; k < numSwitchPOD; ++k) {
+				fout << linkNum << " " << numSwitchPOD * i + j << " " << numSwitchPOD * podNum + numSwitchPOD * i + k << endl;
+				++linkNum;
+			}
+		}
+	}
+	return Init();
 }
 
 void Topology::Show(void)
@@ -118,29 +126,6 @@ int Topology::GetEdgeNum(void)
 pair<int, int> Topology::GetEdge(int edge)
 {
 	return pair<int, int>(m_edges[edge].src, m_edges[edge].dst);
-}
-
-int Topology::Dist(int node, int edge)
-{
-	int dist = 0;
-	set<int> nodes, temp;
-	nodes.insert(node);
-	while (!nodes.empty()) {
-		dist++;
-		for (set<int>::iterator it = nodes.begin(); it != nodes.end(); it++) {
-			AdjacentEdge *p = m_nodes[*it].firstEdge;
-			while (p) {
-				if (p->index == edge)
-					return dist;
-
-				temp.insert(p->dst);
-				p = p->next;
-			}
-		}
-		nodes = temp;
-		temp.clear();
-	}
-	return INT_MAX;
 }
 
 map<int, int> Topology::GetNodeAdjacentEdge(int node, int depth)
@@ -199,81 +184,57 @@ map<int, int> Topology::GetEdgeAdjacentNode(int edge, int depth)
 	return result;
 }
 
-void Topology::GetNormal2LyerFile(ofstream &fout)
+int Topology::Init(void)
 {
-	cout << "Input the switch number of top layer and bottom layer: ";
-	int numSw_top, numSw_bottom;
-	cin >> numSw_top >> numSw_bottom;
-
-	// Output to topology file
-	fout << "switch_number: " << numSw_top + numSw_bottom << endl;
-	
-	int linkNum = 0;
-	for (int i = 0; i < numSw_bottom; ++i) {
-		for (int j = 0; j < numSw_top; ++j) {
-			fout << linkNum << " " << i << " " << numSw_bottom + j << endl;
-			++linkNum;
-		}
-	}
-}
-
-void Topology::GetNormal3LyerFile(ofstream &fout)
-{
-	cout << "Input the number of core switch, pod and switch in pod: ";
-	int numCoreSw, numPOD, numSwPOD, numSwitchPOD;
-	cin >> numCoreSw >> numPOD >> numSwPOD;	
-	numSwitchPOD = numSwPOD / 2;   // Calculate the number of switch at each layer in POD
-
-	// Outout to topology file
-	fout << "switch_number: " << numCoreSw + numPOD * numSwPOD << endl;
-	
-	int linkNum = 0;
-	for (int i = 0; i < numSwitchPOD * numPOD; ++i) {	// Links between POD switch and core switch
-		for (int j = i % numSwitchPOD % 2; j < numCoreSw; j += 2) {
-			fout << linkNum << " " << numSwitchPOD * numPOD + i << " " << numSwPOD * numPOD + j << endl;
-			++linkNum;
-		}
+	// Read topology file
+	ifstream fin(m_fileName);
+	if (fin.bad()) {
+		cout << "Open topology file failed!\n";
+		return 1;
 	}
 
-	for (int i = 0; i < numPOD; ++i) {		// Links between switch and switch in POD
-		for (int j = 0; j < numSwitchPOD; ++j) {
-			for (int k = 0; k < numSwitchPOD; ++k) {
-				fout << linkNum << " " << numSwitchPOD * i + j << " " << numSwitchPOD * numPOD + numSwitchPOD * i + k << endl;
-				++linkNum;
-			}
-		}
+	// Initialize all the node
+	int numSw;
+	fin >> numSw;
+	m_nodes.resize(numSw);
+	for (int i = 0; i < numSw; i++) {
+		m_nodes[i].index = i;
+		m_nodes[i].firstEdge = NULL;
 	}
-}
 
-void Topology::GetFatTree3LyerFile(ofstream &fout)
-{
-	cout << "Input K: ";
-	int k;
-	cin >> k;
+	AdjacentEdge *p, *q;
+	Edge edge;
+	while (fin >> edge.index >> edge.src >> edge.dst) {
+		m_edges.push_back(edge);
+		// for src
+		q = new AdjacentEdge;
+		q->index = edge.index;
+		q->dst = edge.dst;
+		q->next = NULL;
+		p = m_nodes[edge.src].firstEdge;
+		if (p) {
+			while (p->next)	p = p->next;	// find the last edge
+			p->next = q;
+		}
+		else {
+			m_nodes[edge.src].firstEdge = q;
+		}
 
-	int numCoreSw, numPOD, numSwPOD, numSwitchPOD;
-	numCoreSw = pow(k / 2, 2);
-	numPOD = k;
-	numSwPOD = k;
-	numSwitchPOD = numSwPOD / 2;   // Calculate the number of switch at each layer in POD
-
-	// Outout to topology file
-	fout << "switch_number: " << numCoreSw + numPOD * numSwPOD << endl;
-
-	int linkNum = 0;
-	for (int i = 0; i < numSwitchPOD * numPOD; ++i) {	// Links between POD switch and core switch
-		for (int j = i % numSwitchPOD % k; j < numCoreSw; j += (k / 2)) {
-			fout << linkNum << " " << numSwitchPOD * numPOD + i << " " << numSwPOD * numPOD + j << endl;
-			++linkNum;
+		// for dst
+		q = new AdjacentEdge;
+		q->index = edge.index;
+		q->dst = edge.src;
+		q->next = NULL;
+		p = m_nodes[edge.dst].firstEdge;
+		if (p) {
+			while (p->next)	p = p->next;	// find the last edge
+			p->next = q;
+		}
+		else {
+			m_nodes[edge.dst].firstEdge = q;
 		}
 	}
 
-	for (int i = 0; i < numPOD; ++i) {		// Links between switch and switch in POD
-		for (int j = 0; j < numSwitchPOD; ++j) {
-			for (int k = 0; k < numSwitchPOD; ++k) {
-				fout << linkNum << " " << numSwitchPOD * i + j << " " << numSwitchPOD * numPOD + numSwitchPOD * i + k << endl;
-				++linkNum;
-			}
-		}
-	}
+	fin.close();
+	return 0;
 }
